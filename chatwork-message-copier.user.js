@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chatwork Message Copier
 // @namespace    https://www.chatwork.com/
-// @version      0.2.0
+// @version      0.4.0
 // @description  批量复制 Chatwork 消息（含发言人、时间、引用/回复内容）
 // @match        https://www.chatwork.com/*
 // @grant        GM_setClipboard
@@ -14,6 +14,8 @@
 
   const W = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
   const REPLY_MAX_CHARS = 300; // 回复时附带的原消息最多字数
+  const SEPARATOR = '═'.repeat(32); // 不同对话之间的分隔线（避开正文中常见的 ━ ─ -）
+  const GROUP_GAP_SEC = 5 * 60; // 同一人连续发言间隔不超过此秒数视为同一段对话
 
   // ---------- 数据读取 ----------
 
@@ -56,15 +58,15 @@
     s = s.replace(/\[rp aid=(\d+) to=\d+-(\d+)\]([^\n]{0,50}\n?)?/g, (all, aid, mid) => {
       if (nested) return '';
       const orig = getChat(mid);
-      let out = `↩ 回复 ${getName(aid)}`;
+      let out = `┌── ↩ 回复 ${getName(aid)}`;
       if (orig) {
         let body = convert(orig.msg, true).trim();
         if (body.length > REPLY_MAX_CHARS) body = body.slice(0, REPLY_MAX_CHARS) + '…';
-        out += ` ${fmtTime(orig.tm)}:\n` + quoteLines(body) + '\n';
+        out += ` ${fmtTime(orig.tm)}\n` + body.split('\n').map((l) => (l ? '│ ' + l : '│')).join('\n') + '\n';
       } else {
-        out += '（原消息未加载）:\n';
+        out += '（原消息未加载）\n';
       }
-      return out;
+      return out + '└──\n';
     });
 
     return s
@@ -150,7 +152,17 @@
   function copySelected() {
     const chats = [...selected].map(getChat).filter(Boolean).sort((a, b) => a.index - b.index);
     if (!chats.length) return toast('没有选中消息');
-    const text = chats.map(formatChat).join('\n\n');
+    // 同一人间隔不超过 GROUP_GAP_SEC 的连续消息合为一段，段与段之间用分隔线
+    const blocks = [];
+    chats.forEach((c, i) => {
+      const prev = chats[i - 1];
+      if (prev && prev.aid === c.aid && c.tm - prev.tm <= GROUP_GAP_SEC) {
+        blocks[blocks.length - 1] += '\n\n' + convert(c.msg);
+      } else {
+        blocks.push(formatChat(c));
+      }
+    });
+    const text = blocks.join(`\n${SEPARATOR}\n`);
     if (typeof GM_setClipboard === 'function') GM_setClipboard(text, 'text');
     else navigator.clipboard.writeText(text);
     toast(`已复制 ${chats.length} 条消息`);
