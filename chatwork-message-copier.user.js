@@ -162,7 +162,8 @@
         blocks.push(formatChat(c));
       }
     });
-    const text = blocks.join(`\n${SEPARATOR}\n`);
+    // 开头补一条分隔线，多次复制连续粘贴时每批之间也有分隔
+    const text = `${SEPARATOR}\n` + blocks.join(`\n${SEPARATOR}\n`);
     if (typeof GM_setClipboard === 'function') GM_setClipboard(text, 'text');
     else navigator.clipboard.writeText(text);
     toast(`已复制 ${chats.length} 条消息`);
