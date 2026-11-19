@@ -21,8 +21,12 @@
 
   const timeline = () => W.RM && W.RM.timeline;
   const getChat = (mid) => timeline()?.chat_id2chat_dat?.[mid];
+  // 已删除的消息仍留在数据里，内容被替换为 [deleted]，页面上不显示
+  const isDeleted = (c) => /^\s*\[deleted?\]\s*$/.test(String(c?.msg ?? ''));
   const loadedChats = () =>
-    Object.values(timeline()?.chat_id2chat_dat || {}).sort((a, b) => a.index - b.index);
+    Object.values(timeline()?.chat_id2chat_dat || {})
+      .filter((c) => !isDeleted(c))
+      .sort((a, b) => a.index - b.index);
 
   function getName(aid) {
     try {
@@ -59,7 +63,9 @@
       if (nested) return '';
       const orig = getChat(mid);
       let out = `┌── ↩ 回复 ${getName(aid)}`;
-      if (orig) {
+      if (orig && isDeleted(orig)) {
+        out += '（原消息已删除）\n';
+      } else if (orig) {
         let body = convert(orig.msg, true).trim();
         if (body.length > REPLY_MAX_CHARS) body = body.slice(0, REPLY_MAX_CHARS) + '…';
         out += ` ${fmtTime(orig.tm)}\n` + body.split('\n').map((l) => (l ? '│ ' + l : '│')).join('\n') + '\n';
@@ -150,7 +156,7 @@
   }
 
   function copySelected() {
-    const chats = [...selected].map(getChat).filter(Boolean).sort((a, b) => a.index - b.index);
+    const chats = [...selected].map(getChat).filter((c) => c && !isDeleted(c)).sort((a, b) => a.index - b.index);
     if (!chats.length) return toast('没有选中消息');
     // 同一人间隔不超过 GROUP_GAP_SEC 的连续消息合为一段，段与段之间用分隔线
     const blocks = [];
